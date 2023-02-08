@@ -32,10 +32,9 @@ import (
 
 func newConfig() Config {
 	return Config{
-		PartitionCount:    23,
-		ReplicationFactor: 20,
-		Load:              1.25,
-		Hasher:            hasher{},
+		PartitionCount: 23,
+		Load:           1.25,
+		Hasher:         hasher{},
 	}
 }
 
@@ -43,6 +42,10 @@ type testMember string
 
 func (tm testMember) String() string {
 	return string(tm)
+}
+
+func (tm testMember) ReplicationFactor() int {
+	return 20
 }
 
 type hasher struct{}

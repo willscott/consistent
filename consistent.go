@@ -85,6 +85,7 @@ type Hasher interface {
 // Member interface represents a member in consistent hash ring.
 type Member interface {
 	String() string
+	ReplicationFactor() int
 }
 
 // Config represents a structure to control consistent package.
@@ -96,10 +97,6 @@ type Config struct {
 	// distribute keys uniformly. Select a big PartitionCount if you have
 	// too many keys.
 	PartitionCount int
-
-	// Members are replicated on consistent hash ring. This number means that a member
-	// how many times replicated on the ring.
-	ReplicationFactor int
 
 	// Load is used to calculate average load. See the code, the paper and Google's blog post to learn about it.
 	Load float64
@@ -126,9 +123,6 @@ func New(members []Member, config Config) *Consistent {
 	}
 	if config.PartitionCount == 0 {
 		config.PartitionCount = DefaultPartitionCount
-	}
-	if config.ReplicationFactor == 0 {
-		config.ReplicationFactor = DefaultReplicationFactor
 	}
 	if config.Load == 0 {
 		config.Load = DefaultLoad
@@ -226,7 +220,7 @@ func (c *Consistent) distributePartitions() {
 }
 
 func (c *Consistent) add(member Member) {
-	for i := 0; i < c.config.ReplicationFactor; i++ {
+	for i := 0; i < member.ReplicationFactor(); i++ {
 		key := []byte(fmt.Sprintf("%s%d", member.String(), i))
 		h := c.hasher.Sum64(key)
 		c.ring[h] = &member
@@ -267,12 +261,13 @@ func (c *Consistent) Remove(name string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if _, ok := c.members[name]; !ok {
+	m, ok := c.members[name]
+	if !ok {
 		// There is no member with that name. Quit immediately.
 		return
 	}
 
-	for i := 0; i < c.config.ReplicationFactor; i++ {
+	for i := 0; i < (*m).ReplicationFactor(); i++ {
 		key := []byte(fmt.Sprintf("%s%d", name, i))
 		h := c.hasher.Sum64(key)
 		delete(c.ring, h)
