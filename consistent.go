@@ -140,7 +140,9 @@ func New(members []Member, config Config) *Consistent {
 		c.add(member)
 	}
 	if members != nil {
-		c.distributePartitions()
+		if err := c.distributePartitions(); err != nil {
+			return nil
+		}
 	}
 	return c
 }
@@ -175,14 +177,14 @@ func (c *Consistent) averageLoad() float64 {
 	return math.Ceil(avgLoad)
 }
 
-func (c *Consistent) distributeWithLoad(partID, idx int, partitions map[int]*Member, loads map[string]float64) {
+func (c *Consistent) distributeWithLoad(partID, idx int, partitions map[int]*Member, loads map[string]float64) error {
 	avgLoad := c.averageLoad()
 	var count int
 	for {
 		count++
 		if count >= len(c.sortedSet) {
 			// User needs to decrease partition count, increase member count or increase load factor.
-			panic("not enough room to distribute partitions")
+			return errors.New("not enough room to distribute partitions")
 		}
 		i := c.sortedSet[idx]
 		member := *c.ring[i]
@@ -190,7 +192,7 @@ func (c *Consistent) distributeWithLoad(partID, idx int, partitions map[int]*Mem
 		if load+1 <= avgLoad {
 			partitions[partID] = &member
 			loads[member.String()]++
-			return
+			return nil
 		}
 		idx++
 		if idx >= len(c.sortedSet) {
@@ -199,7 +201,7 @@ func (c *Consistent) distributeWithLoad(partID, idx int, partitions map[int]*Mem
 	}
 }
 
-func (c *Consistent) distributePartitions() {
+func (c *Consistent) distributePartitions() error {
 	loads := make(map[string]float64)
 	partitions := make(map[int]*Member)
 
@@ -213,10 +215,13 @@ func (c *Consistent) distributePartitions() {
 		if idx >= len(c.sortedSet) {
 			idx = 0
 		}
-		c.distributeWithLoad(int(partID), idx, partitions, loads)
+		if err := c.distributeWithLoad(int(partID), idx, partitions, loads); err != nil {
+			return err
+		}
 	}
 	c.partitions = partitions
 	c.loads = loads
+	return nil
 }
 
 func (c *Consistent) add(member Member) {
@@ -235,16 +240,16 @@ func (c *Consistent) add(member Member) {
 }
 
 // Add adds a new member to the consistent hash circle.
-func (c *Consistent) Add(member Member) {
+func (c *Consistent) Add(member Member) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if _, ok := c.members[member.String()]; ok {
 		// We already have this member. Quit immediately.
-		return
+		return nil
 	}
 	c.add(member)
-	c.distributePartitions()
+	return c.distributePartitions()
 }
 
 func (c *Consistent) delSlice(val uint64) {
@@ -257,14 +262,14 @@ func (c *Consistent) delSlice(val uint64) {
 }
 
 // Remove removes a member from the consistent hash circle.
-func (c *Consistent) Remove(name string) {
+func (c *Consistent) Remove(name string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	m, ok := c.members[name]
 	if !ok {
 		// There is no member with that name. Quit immediately.
-		return
+		return nil
 	}
 
 	for i := 0; i < (*m).ReplicationFactor(); i++ {
@@ -277,9 +282,9 @@ func (c *Consistent) Remove(name string) {
 	if len(c.members) == 0 {
 		// consistent hash ring is empty now. Reset the partition table.
 		c.partitions = make(map[int]*Member)
-		return
+		return nil
 	}
-	c.distributePartitions()
+	return c.distributePartitions()
 }
 
 // LoadDistribution exposes load distribution of members.

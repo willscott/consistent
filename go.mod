@@ -1,3 +1,3 @@
-module github.com/buraksezer/consistent
+module github.com/willscott/consistent
 
-go 1.9
+go 1.19
